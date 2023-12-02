@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat API/WebSocket Test</title>
+    <style>
+        #chats{
+            border: 2px solid brown;
+            display: block;
+            margin: auto;
+            height: 500px;
+            width: 60%;
+            padding: 10px;
+            overflow-y: scroll;
+        }
+        .own{
+            background-color: rgb(234, 255, 118); 
+            padding: 8px 16px 8px 16px;
+            border-radius: 16px;
+            font-size: 18px;
+            width: fit-content;
+            font-family:'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+            margin-right: 0;
+            margin-left: auto;
+            margin-top: 3px;
+            max-width: 70%;
+            
+        }
+        .match{
+            background-color: rgb(203, 227, 247);
+            padding: 8px 16px 8px 16px;
+            border-radius: 16px;
+            font-size: 18px;
+            width: fit-content;
+            font-family:'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+            margin-top: 3px;
+            max-width: 70%;
+        }
+        .own img{
+            cursor: pointer;
+            border-radius: 10px;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+        .match img{
+            cursor: pointer;
+            border-radius: 10px;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+        #form{
+            width: 60%;
+            display: block;
+            margin: auto;
+            margin-top: 10px;
+            border: 2px solid gold;
+            padding: 10px;
+        }
+        #text_message{
+            width: 71%;
+            font-size: 20px;
+            outline: none;
+            border: none;
+            border-bottom: 2px solid blueviolet;
+        }
+        #image_message{
+            width: 0px;
+            height: 0px;
+        }
+        #image_message_label{
+            width: 12%;
+            border-radius: 50%;
+            padding: 10px 16px 10px 16px;
+            color: white;
+            background-color: palevioletred;
+            font-size: 20px;
+            font-weight: 900;
+            cursor: pointer;
+            font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+        }
+        #send_file_btn{
+            width: 16%;
+            border: none;
+            background-color: rgb(240, 145, 81);
+            font-size: 24px;
+            border-radius: 8px;
+            padding: 4px 8px 4px 8px;
+            cursor: pointer;
+            color: rgb(48, 96, 255);
+        }
+    </style>
+</head>
+
+<body>
+    
+    <div id="chats"></div>
+
+    <form enctype="multipart/form-data" id="form" method="POST">
+        <label id="image_message_label" for="image_message">+</label>
+        <input id="text_message" type="text" name="text_message" />
+        <input id="image_message" type="file" name="image_message"/>
+        <button type="button" id="send_file_btn" onclick="uplaod_chat_image();">Send Image</button>
+    </form>
+
+
+    <script>
+        const own_userid = "{{user_id}}".replace("-", "");
+        const match_id = "{{match_id}}";
+        const auth_token = "{{auth_token}}";
+
+        const webscoket_url = `ws://${window.location.host}/ws/chat/match/${match_id}/?token=${auth_token}&id=${own_userid}`;
+
+        const chatWebSocket = new WebSocket(webscoket_url);
+
+        // socket.onopen = () => {
+        //     socket.send(JSON.stringify({'image': 'image_url'}));
+        // };
+
+        chatWebSocket.onmessage = function (e) {
+            const data = JSON.parse(e.data);
+            console.log(data)
+            if (data.type === 'message') {
+                const messages = document.getElementById('chats')
+                if (data.data.sender === own_userid) {
+                    messages.insertAdjacentHTML('beforeend',
+                        `<div class="own">
+                            <div class="text">${data.data.message}</div>
+                            <div class="image"></div>
+                        </div>`
+                    );
+                }
+                else {
+                    messages.insertAdjacentHTML('beforeend',
+                        `<div class="match">
+                            <div class="text">${data.data.message}</div>
+                            <div class="image"></div>
+                        </div>`
+                    );
+                }
+                
+            }
+            else if (data.type === 'image') {
+                const messages = document.getElementById('chats')
+                if (data.data.sender === own_userid) {
+                    messages.insertAdjacentHTML('beforeend',
+                        `<div class="own">
+                            <div class="text"></div>
+                            <div class="image"><img src="http://${window.location.host}${data.data}"></div>
+                        </div>`
+                    );
+                }
+                else {
+                    messages.insertAdjacentHTML('beforeend',
+                        `<div class="match">
+                            <div class="text"></div>
+                            <div class="image"><img src="http://${window.location.host}${data.data}"></div>
+                        </div>`
+                    );
+                }
+                
+            }else{
+
+            }
+        }
+        
+
+        const form = document.getElementById('form')
+        form.addEventListener('submit', (e) => {
+            e.preventDefault()
+            send_message_to_websocket("message", e.target.text_message.value);
+            form.reset();
+        });
+
+        async function uplaod_chat_image() {
+            const image = document.getElementById("image_message").files[0];
+            if (image == null || image == undefined){
+                alert("Select a file");
+                return;
+            }
+            const formData = new FormData();
+            formData.append("image", image);
+
+            const request = await fetch(`http://${window.location.host}/chat/match/${match_id}/upload/image/`, {
+                method: "POST",
+                headers: {
+                    'Authorization': "Token {{auth_token}}"
+                },
+               body: formData
+            });
+            const data = await request.json();
+            send_message_to_websocket("image", data.image, data.sender, data.message_id);
+        }
+
+
+        function send_message_to_websocket(type, data, sender='', m_id=''){
+            if  (type==="message"){
+                chatWebSocket.send(JSON.stringify({
+                    "message" : data,
+                    "sender" : sender
+                }));
+            }
+            else if(type==="image"){
+                chatWebSocket.send(JSON.stringify({
+                    "image" : data,
+                    "sender" : sender,
+                    "message_id" : m_id
+                }));
+            }
+            else{
+                return;
+            }
+            return;
+        }
+    </script> 
+
+</body>
+</html>
